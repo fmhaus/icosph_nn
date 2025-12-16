@@ -26,19 +26,4 @@ class IcosphereConv(nn.Module):
         weight_table = _GLOBAL_WEIGHT_TABLES.get_table(L, x.device)
 
         inner = face_view[:, :, :, 1:-1, 1:-1]
-
-
-        """
-        level = _backend.get_icosphere_level(x.shape[0])
-        neighbour_weights = _GLOBAL_WEIGHT_TABLES.get_table(level, x.device)
-        gradients = _backend.icosphere_gradient(x, neighbour_weights, True)
-
-        N2, C, V2, G = gradients.shape
-        assert(N2 == N)
-        assert(C == self.in_channels)
-        assert(V2 == V)
-        assert(G == 5)
-
-        gradients_flat = gradients.reshape((N, C, V*G))
-        return self.conv(gradients_flat)
-        """
+    
