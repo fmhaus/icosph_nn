@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "pybind11", "torch", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "icosph_nn"
+version = "0.0.0"
+description = "Neural networks on subdivided Icospheres"
+authors = [{ name="fmhaus"}]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["src"]

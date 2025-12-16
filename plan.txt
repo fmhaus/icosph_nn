@@ -1,0 +1,22 @@
+For base seams
+1 for east/west each
+2 for north/west each
+
+FOR NORTH-SOUTH ALIGNED EDGES (north-east, north-west, south-east, south-west) seams
+
+1 for north/south each
+2 for west/east each
+
+For west/east seams
+2 north/south each
+1 west/each each
+
+For connecting vertex (north)
+1 north
+1 west/east each
+2 south
+
+For connector south
+1 south
+1 west/east each
+2 north
