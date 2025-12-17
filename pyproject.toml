@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "pybind11", "torch", "numpy"]
+requires = ["setuptools>=61.0", "torch"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,5 +10,6 @@ authors = [{ name="fmhaus"}]
 readme = "README.md"
 requires-python = ">=3.8"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+dependencies = [
+    "torch>=2.0"
+]
