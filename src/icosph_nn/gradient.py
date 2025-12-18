@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from icosph_nn import utils
-from icosph_nn.icosphere import IcoSphere, cart2sph
+from icosph_nn.icosphere import Icosphere, cart2sph
 from collections import defaultdict
 
 def _create_weights(vertices, base_dirs, weight_grouping, indices, neighbour_indices):
@@ -28,15 +28,15 @@ class NeighbourWeightTable:
     def __init__(self, L, device):
         HS, S = utils.get_face_side_dims(L)
 
-        icosphere = IcoSphere(L, device)
+        icosphere = Icosphere(L, device)
         v_cart = icosphere.generate_vertices()
         V, _ = v_cart.shape
         
         N = (V-2) // 5
         v_sph = cart2sph(v_cart[:N])    
 
-        north = IcoSphere.get_north_directions(v_sph)
-        east = IcoSphere.get_east_directions(v_sph)
+        north = Icosphere.get_north_directions(v_sph)
+        east = Icosphere.get_east_directions(v_sph)
         base_dirs = (east, -east, north, -north)
 
         indices = torch.arange(N, device=device).view(HS, S)
@@ -45,28 +45,28 @@ class NeighbourWeightTable:
         pole_indices = torch.asarray([icosphere.vertex_south_index, icosphere.vertex_north_index], device=device)
 
         self.inner = _create_weights(v_cart, base_dirs, 
-                                    ((0,), (1,), (2, 3), (4, 5)),
-                                    indices[1:-1, 1:-1],
-                                    [
-                                        indices[:-2, :-2],
-                                        indices[2:, 2:],
-                                        indices[:-2, 1:-1],
-                                        indices[1:-1, 2:],
-                                        indices[1:-1, :-2],
-                                        indices[2:, 1:-1]
-                                    ])
-        
+                                ((0,), (1,), (2, 3), (4, 5)),
+                                indices[1:-1, 1:-1],
+                                [
+                                    indices[:-2, :-2],
+                                    indices[2:, 2:],
+                                    indices[:-2, 1:-1],
+                                    indices[1:-1, 2:],
+                                    indices[1:-1, :-2],
+                                    indices[2:, 1:-1]
+                                ])
+
         self.east = _create_weights(v_cart, base_dirs,
-                                   ((0,), (1,), (2, 3), (4, 5)),
-                                   indices[0, 1:HS],
-                                   [
-                                       indices_next[HS-1, slice(HS, S-1)],  # weight 0 (wrap_prev)
-                                       indices[1, 2:HS+1],                   # weight 1
-                                       indices_next[HS-1, slice(HS+1, S)],   # weight 2 (wrap_prev)
-                                       indices[0, 2:HS+1],                   # weight 3
-                                       indices[0, 0:HS-1],                   # weight 4
-                                       indices[1, 1:HS]                      # weight 5
-                                   ])
+                                ((0,), (1,), (2, 3), (4, 5)),
+                                indices[0, 1:HS],
+                                [
+                                    indices_next[HS-1, HS:S-1],  # weight 0 (wrap_prev)
+                                    indices[1, 2:HS+1],          # weight 1
+                                    indices_next[HS-1, HS+1:S],  # weight 2 (wrap_prev)
+                                    indices[0, 2:HS+1],          # weight 3
+                                    indices[0, 0:HS-1],          # weight 4
+                                    indices[1, 1:HS]             # weight 5
+                                ])
 
         self.cn = _create_weights(v_cart, base_dirs,
                                 ((0,), (1,), (2,), (3, 4)),
@@ -83,12 +83,12 @@ class NeighbourWeightTable:
                                 ((0, 1), (2, 3), (4,), (5,)),
                                 indices[0, HS+1:S-1],
                                 [
-                                    indices_prev[slice(HS-2, 0, -1), S-1],  # weight 0 (wrap_prev)
-                                    indices_prev[slice(HS-1, 1, -1), S-1],  # weight 1 (wrap_prev_acc)
-                                    indices[1, HS+2:S],                     # weight 2
-                                    indices[1, HS+1:S-1],                   # weight 3
-                                    indices[0, HS+2:S],                     # weight 4
-                                    indices[0, HS:S-2]                      # weight 5
+                                    indices_prev[1:HS-1, S-1].flip(0),  # rows flipped (1D)
+                                    indices_prev[2:HS, S-1].flip(0),    # rows flipped (1D)
+                                    indices[1, HS+2:S],                 # weight 2
+                                    indices[1, HS+1:S-1],               # weight 3
+                                    indices[0, HS+2:S],                 # weight 4
+                                    indices[0, HS:S-2]                  # weight 5
                                 ])
 
         self.nne = _create_weights(v_cart, base_dirs,
@@ -99,7 +99,7 @@ class NeighbourWeightTable:
                                     indices_prev[1, S-1],       # weight 1 (wrap_prev_acc)
                                     indices_next[0, S-1],       # weight 2 (wrap_next)
                                     indices[1, S-1],            # weight 3
-                                    pole_indices[1],           # weight 4 (north pole)
+                                    pole_indices[1],            # weight 4 (north pole)
                                     indices[0, S-2]             # weight 5
                                 ])
 
@@ -108,9 +108,9 @@ class NeighbourWeightTable:
                                 indices[1:HS-1, S-1],
                                 [
                                     indices[0:HS-2, S-2],                    # weight 0
-                                    indices_next[0, slice(S-2, HS, -1)],     # weight 1 (wrap_next)
+                                    indices_next[0, HS+1:S-1].flip(-1),      # columns flipped (1D)
                                     indices[0:HS-2, S-1],                    # weight 2
-                                    indices_next[0, slice(S-1, HS+1, -1)],   # weight 3 (wrap_next_acc)
+                                    indices_next[0, HS+2:S].flip(-1),        # columns flipped (1D)
                                     indices[1:HS-1, S-2],                    # weight 4
                                     indices[2:HS, S-1]                       # weight 5
                                 ])
@@ -131,24 +131,24 @@ class NeighbourWeightTable:
                                 ((0,), (1,), (2, 3), (4, 5)),
                                 indices[HS-1, HS:S-1],
                                 [
-                                    indices[HS-2, HS-1:S-2],              # weight 0
-                                    indices_next[0, slice(1, HS)],        # weight 1 (wrap_next)
-                                    indices[HS-2, HS:S-1],                # weight 2
-                                    indices[HS-1, HS+1:S],                # weight 3
-                                    indices[HS-1, HS-1:S-2],              # weight 4
-                                    indices_next[0, slice(0, HS-1)]       # weight 5 (wrap_next_acc)
+                                    indices[HS-2, HS-1:S-2],  # weight 0
+                                    indices_next[0, 1:HS],    # weight 1 (wrap_next)
+                                    indices[HS-2, HS:S-1],    # weight 2
+                                    indices[HS-1, HS+1:S],    # weight 3
+                                    indices[HS-1, HS-1:S-2],  # weight 4
+                                    indices_next[0, 0:HS-1]   # weight 5 (wrap_next_acc)
                                 ])
 
         self.sw = _create_weights(v_cart, base_dirs,
                                 ((0,), (1,), (2, 3), (4, 5)),
                                 indices[HS-1, 1:HS],
                                 [
-                                    indices[HS-2, 0:HS-1],                    # weight 0
-                                    indices_next[slice(HS-2, -1, -1), 0],     # weight 1 (wrap_next)
-                                    indices[HS-2, 1:HS],                      # weight 2
-                                    indices[HS-1, 2:HS+1],                    # weight 3
-                                    indices[HS-1, 0:HS-1],                    # weight 4
-                                    indices_next[slice(HS-1, 0, -1), 0]       # weight 5 (wrap_next_acc)
+                                    indices[HS-2, 0:HS-1],          # weight 0
+                                    indices_next[0:HS-1, 0].flip(0), # rows flipped (1D)
+                                    indices[HS-2, 1:HS],            # weight 2
+                                    indices[HS-1, 2:HS+1],          # weight 3
+                                    indices[HS-1, 0:HS-1],          # weight 4
+                                    indices_next[1:HS, 0].flip(0)   # rows flipped (1D)
                                 ])
 
         self.sse = _create_weights(v_cart, base_dirs,
@@ -159,19 +159,19 @@ class NeighbourWeightTable:
                                     indices_next[HS-1, 0],   # weight 1 (wrap_next)
                                     indices[HS-2, 0],        # weight 2
                                     indices[HS-1, 1],        # weight 3
-                                    pole_indices[0]         # weight 4 (south pole)
+                                    pole_indices[0]          # weight 4 (south pole)
                                 ])
 
         self.se = _create_weights(v_cart, base_dirs,
                                 ((0, 1), (2, 3), (4,), (5,)),
                                 indices[1:HS-1, 0],
                                 [
-                                    indices_prev[HS-1, slice(HS-1, 1, -1)],   # weight 0 (wrap_prev)
-                                    indices_prev[HS-1, slice(HS-2, 0, -1)],   # weight 1 (wrap_prev_acc)
-                                    indices[1:HS-1, 1],                       # weight 2
-                                    indices[2:HS, 1],                         # weight 3
-                                    indices[0:HS-2, 0],                       # weight 4
-                                    indices[2:HS, 0]                          # weight 5
+                                    indices_prev[HS-1, 2:HS].flip(-1),    # columns flipped (1D)
+                                    indices_prev[HS-1, 1:HS-1].flip(-1),  # columns flipped (1D)
+                                    indices[1:HS-1, 1],                  # weight 2
+                                    indices[2:HS, 1],                    # weight 3
+                                    indices[0:HS-2, 0],                  # weight 4
+                                    indices[2:HS, 0]                     # weight 5
                                 ])
 
         self.cs = _create_weights(v_cart, base_dirs,
@@ -184,7 +184,6 @@ class NeighbourWeightTable:
                                     indices[0, 1],              # weight 3
                                     indices[1, 0]               # weight 4
                                 ])
-
 
 class NeighbourWeightTableCache:
     def __init__(self):
@@ -204,27 +203,32 @@ class NeighbourWeightTableCache:
 
 _GLOBAL_WEIGHT_TABLES = NeighbourWeightTableCache()
 
-#@torch.jit.script
-def _wrap_prev_diff(output, input_full, input, j, i, weights):
-    output[:, 1:, ...] = (input_full[:, :4, j, i] - input[:, 1:, ...]) * weights
-    output[:, 0, ...] = (input_full[:, 4, j, i] - input[:, 0, ...]) * weights
+def _wrap_prev_diff(output, input_full, input, j, i, weights, acc=False, rev=False):
+    values_main = input_full[:, :4, j, i]
+    values_wrap = input_full[:, 4, j, i]
+    if rev:
+        values_main = values_main.flip(0)
+        values_wrap = values_wrap.flip(0)
+    if acc:
+        output[:, 1:, ...] += (values_main - input[:, 1:, ...]) * weights
+        output[:, 0, ...] += (values_wrap - input[:, 0, ...]) * weights.squeeze(0)
+    else:
+        output[:, 1:, ...] = (values_main - input[:, 1:, ...]) * weights
+        output[:, 0, ...] = (values_wrap - input[:, 0, ...]) * weights.squeeze(0)
 
-#@torch.jit.script
-def _wrap_prev_diff_acc(output, input_full, input, j, i, weights):
-    output[:, 1:, ...] += (input_full[:, :4, j, i] - input[:, 1:, ...]) * weights
-    output[:, 0, ...] += (input_full[:, 4, j, i] - input[:, 0, ...]) * weights
+def _wrap_next_diff(output, input_full, input, j, i, weights, acc=False, rev=False):
+    values_main = input_full[:, 1:, j, i]
+    values_wrap = input_full[:, 0, j, i]
+    if rev:
+        values_main = values_main.flip(0)
+        values_wrap = values_wrap.flip(0)
+    if acc:
+        output[:, :4, ...] += (values_main - input[:, :4, ...]) * weights
+        output[:, 4, ...] += (values_wrap - input[:, 4, ...]) * weights.squeeze(0)
+    else:
+        output[:, :4, ...] = (values_main - input[:, :4, ...]) * weights
+        output[:, 4, ...] = (values_wrap - input[:, 4, ...]) * weights.squeeze(0)
 
-#@torch.jit.script
-def _wrap_next_diff(output, input_full, input, j, i, weights):
-    output[:, :4, ...] = (input_full[:, 1:, j, i] - input[:, :4, ...]) * weights
-    output[:, 5, ...] = (input_full[:, 0, j, i] - input[:, 4, ...]) * weights
-
-#@torch.jit.script
-def _wrap_next_diff_acc(output, input_full, input, j, i, weights):
-    output[:, :4, ...] += (input_full[:, 1:, j, i] - input[:, :4, ...]) * weights
-    output[:, 5, ...] += (input_full[:, 0, j, i] - input[:, 4, ...]) * weights
-
-#@torch.jit.script
 def _get_gradient_impl(L, input, poles, weight_table, output):
     HS, S = utils.get_face_side_dims(L)
     # input [C, face_side, width, height]
@@ -263,8 +267,8 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     # ne
     ne_in = input[..., 0, HS+1:S-1]
     ne_out = output[..., 0, HS+1:S-1]
-    _wrap_prev_diff(ne_out[:, 0, ...], input, ne_in, slice(HS-2, 0, -1), S-1, weight_table.ne[None, None, 0, :])
-    _wrap_prev_diff_acc(ne_out[:, 0, ...], input, ne_in, slice(HS-1, 1, -1), S-1, weight_table.ne[None, None, 1, :])
+    _wrap_prev_diff(ne_out[:, 0, ...], input, ne_in, slice(1, HS-1), S-1, weight_table.ne[None, None, 0, :], rev=True)
+    _wrap_prev_diff(ne_out[:, 0, ...], input, ne_in, slice(2, HS), S-1, weight_table.ne[None, None, 1, :], acc=True, rev=True)
     ne_out[:, 1, ...] = (input[:, :, 1, HS+2:S] - ne_in) * weight_table.ne[None, None, 2, :]
     ne_out[:, 1, ...] += (input[:, :, 1, HS+1:S-1] - ne_in) * weight_table.ne[None, None, 3, :]
     ne_out[:, 2, ...] = (input[:, :, 0, HS+2:S] - ne_in) * weight_table.ne[None, None, 4, :]
@@ -274,7 +278,7 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     nne_in = input[..., 0, S-1]
     nne_out = output[..., 0, S-1]
     _wrap_prev_diff(nne_out[:, 0, :], input, nne_in, 0, S-1, weight_table.nne[None, None, 0])
-    _wrap_prev_diff_acc(nne_out[:, 0, :], input, nne_in, 1, S-1, weight_table.nne[None, None, 1])
+    _wrap_prev_diff(nne_out[:, 0, :], input, nne_in, 1, S-1, weight_table.nne[None, None, 1], acc=True)
     _wrap_next_diff(nne_out[:, 1, :], input, nne_in, 0, S-1, weight_table.nne[None, None, 2])
     nne_out[:, 1, :] = (input[:, :, 1, S-1] - nne_in) * weight_table.nne[None, None, 3]
     nne_out[:, 2, :] = (poles[:, 1] - nne_in) * weight_table.nne[None, None, 4]
@@ -284,9 +288,9 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     nw_in = input[..., 1:HS-1, S-1]
     nw_out = output[..., 1:HS-1, S-1]
     nw_out[:, 0, ...] = (input[:, :, 0:HS-2, S-2] - nw_in) * weight_table.nw[None, None, 0, :]
-    _wrap_next_diff(nw_out[:, 1, ...], input, nw_in, 0, slice(S-2,HS,-1), weight_table.nw[None, None, 1, :])
+    _wrap_next_diff(nw_out[:, 1, ...], input, nw_in, 0, slice(HS+1, S-1), weight_table.nw[None, None, 1, :], rev=True)
     nw_out[:, 2, ...] = (input[:, :, 0:HS-2, S-1] - nw_in) * weight_table.nw[None, None, 2, :]
-    _wrap_next_diff_acc(nw_out[:, 2, ...], input, nw_in, 0, slice(S-1,HS+1,-1), weight_table.nw[None, None, 3, :])
+    _wrap_next_diff(nw_out[:, 2, ...], input, nw_in, 0, slice(HS+2, S), weight_table.nw[None, None, 3, :], acc=True, rev=True)
     nw_out[:, 3, ...] = (input[:, :, 1:HS-1, S-2] - nw_in) * weight_table.nw[None, None, 4, :]
     nw_out[:, 3, ...] += (input[:, :, 2:HS, S-1] - nw_in) * weight_table.nw[None, None, 5, :]
 
@@ -296,9 +300,9 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     nww_out[:, 0, :] = (input[:, :, HS-2, S-2] - nww_in) * weight_table.nww[None, None, 0]
     _wrap_next_diff(nww_out[:, 1, :], input, nww_in, 0, HS, weight_table.nww[None, None, 1])
     nww_out[:, 2, :] = (input[:, :, HS-2, S-1] - nww_in) * weight_table.nww[None, None, 2]
-    _wrap_next_diff_acc(nww_out[:, 2, :], input, nww_in, 0, HS+1, weight_table.nww[None, None, 3])
+    _wrap_next_diff(nww_out[:, 2, :], input, nww_in, 0, HS+1, weight_table.nww[None, None, 3], acc=True)
     nww_out[:, 3, :] = (input[:, :, HS-1, S-2] - nww_in) * weight_table.nww[None, None, 4]
-    _wrap_next_diff_acc(nww_out[:, 3, :], input, nww_in, 0, HS-1, weight_table.nww[None, None, 5])
+    _wrap_next_diff(nww_out[:, 3, :], input, nww_in, 0, HS-1, weight_table.nww[None, None, 5], acc=True)
 
     #west
     west_in = input[..., HS-1, HS:S-1]
@@ -308,18 +312,18 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     west_out[:, 2, ...] = (input[:, :, HS-2, HS:S-1] - west_in) * weight_table.west[None, None, 2, :]
     west_out[:, 2, ...] += (input[:, :, HS-1, HS+1:S] - west_in) * weight_table.west[None, None, 3, :]
     west_out[:, 3, ...] = (input[:, :, HS-1, HS-1:S-2] - west_in) * weight_table.west[None, None, 4, :]
-    _wrap_next_diff_acc(west_out[:, 3, ...], input, west_in, 0, slice(0, HS-1), weight_table.west[None, None, 5, :])
+    _wrap_next_diff(west_out[:, 3, ...], input, west_in, 0, slice(0, HS-1), weight_table.west[None, None, 5, :], acc=True)
 
     # SW
     sw_in = input[..., HS-1, 1:HS]
     sw_out = output[..., HS-1, 1:HS]
     sw_out[:, 0, ...] = (input[:, :, HS-2, 0:HS-1] - sw_in) * weight_table.sw[None, None, 0, :]
-    _wrap_next_diff(sw_out[:, 1, ...], input, sw_in, slice(HS-2, -1, -1), 0, weight_table.sw[None, None, 1, :])
+    _wrap_next_diff(sw_out[:, 1, ...], input, sw_in, slice(0, HS-1), 0, weight_table.sw[None, None, 1, :], rev=True)
     sw_out[:, 2, ...] = (input[:, :, HS-2, 1:HS] - sw_in) * weight_table.sw[None, None, 2, :]
     sw_out[:, 2, ...] += (input[:, :, HS-1, 2:HS+1] - sw_in) * weight_table.sw[None, None, 3, :]
     sw_out[:, 3, ...] = (input[:, :, HS-1, 0:HS-1] - sw_in) * weight_table.sw[None, None, 4, :]
-    _wrap_next_diff_acc(sw_out[:, 3, ...], input, sw_in, slice(HS-1, 0, -1), 0, weight_table.sw[None, None, 5, :])
-    
+    _wrap_next_diff(sw_out[:, 3, ...], input, sw_in, slice(1, HS), 0, weight_table.sw[None, None, 5, :], acc=True, rev=True)
+
     # SSE
     sse_in = input[..., HS-1, 0]
     sse_out = output[..., HS-1, 0]
@@ -332,8 +336,8 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     # SE
     se_in = input[..., 1:HS-1, 0]
     se_out = output[..., 1:HS-1, 0]
-    _wrap_prev_diff(se_out[:, 0, ...], input, se_in, HS-1, slice(HS-1,1,-1), weight_table.se[None, None, 0, :])
-    _wrap_prev_diff_acc(se_out[:, 0, ...], input, se_in, HS-1, slice(HS-2,0,-1), weight_table.se[None, None, 1, :])
+    _wrap_prev_diff(se_out[:, 0, ...], input, se_in, HS-1, slice(2, HS), weight_table.se[None, None, 0, :], rev=True)
+    _wrap_prev_diff(se_out[:, 0, ...], input, se_in, HS-1, slice(1, HS-1), weight_table.se[None, None, 1, :], acc=True, rev=True)
     se_out[:, 1, ...] = (input[:, :, 1:HS-1, 1] - se_in) * weight_table.se[None, None, 2, :]
     se_out[:, 1, ...] += (input[:, :, 2:HS, 1] - se_in) * weight_table.se[None, None, 3, :]
     se_out[:, 2, ...] = (input[:, :, 0:HS-2, 0] - se_in) * weight_table.se[None, None, 4, :]
@@ -342,12 +346,11 @@ def _get_gradient_impl(L, input, poles, weight_table, output):
     # CS
     cs_in = input[..., 0, 0]
     cs_out = output[..., 0, 0]
-    _wrap_prev_diff(cs_out[:, 0, ...], input, cs_in, HS-1, HS-1, weight_table.cs[None, None, 0, :])
-    cs_out[:, 1, :] = (input[:, :, 1, 1] - cs_in) * weight_table.cs[None, None, 1, :]
-    _wrap_prev_diff(cs_out[:, 2, ...], input, cs_in, HS-1, HS, weight_table.cs[None, None, 2, :])
-    cs_out[:, 2, :] += (input[:, :, 0, 1] - cs_in) * weight_table.cs[None, None, 3, :]
-    cs_out[:, 3, :] = (input[:, :, 1, 0] - cs_in) * weight_table.cs[None, None, 4, :]
-
+    _wrap_prev_diff(cs_out[:, 0, ...], input, cs_in, HS-1, HS-1, weight_table.cs[None, None, 0])
+    cs_out[:, 1, :] = (input[:, :, 1, 1] - cs_in) * weight_table.cs[None, None, 1]
+    _wrap_prev_diff(cs_out[:, 2, ...], input, cs_in, HS-1, HS, weight_table.cs[None, None, 2])
+    cs_out[:, 2, :] += (input[:, :, 0, 1] - cs_in) * weight_table.cs[None, None, 3]
+    cs_out[:, 3, :] = (input[:, :, 1, 0] - cs_in) * weight_table.cs[None, None, 4]
 
 class IcosphereGradient(nn.Module):
     def __init__(self, keep_original_value = False):
@@ -366,8 +369,6 @@ class IcosphereGradient(nn.Module):
         L = utils.get_icosphere_level(V)
         w, h = utils.get_face_side_dims(L)
 
-        print(f'{L} {w} {h}')
-
         non_polar = x[..., :-2].view(N*C, 5, w, h)
         poles = x[..., -2:].view(N*C, 2)
 
@@ -376,14 +377,48 @@ class IcosphereGradient(nn.Module):
         if self.keep_original_value:
             output = torch.empty((N, C, 5, V), device=x.device, dtype=x.dtype)
             output[:, :, :, 4] = x
-            out_view = output.view(N*C, 5, 5, w, h)
+            non_polar_out = output[..., :-2].view(N*C, 5, 5, w, h)
         else:
             output = torch.empty((N, C, 4, V), device=x.device, dtype=x.dtype)
-            out_view = output.view(N*C, 4, 5, w, h)
+            non_polar_out = output[..., :-2].view(N*C, 4, 5, w, h)
 
-        _get_gradient_impl(L, non_polar, poles, weight_table, out_view)
+        _get_gradient_impl(L, non_polar, poles, weight_table, non_polar_out)
 
         for _ in range(3 - input_dim):
             output = output.squeeze(0)
 
         return output
+
+def f():
+    from icosph_nn.visuals import IcosphereVisualizer
+    L = 5
+
+    ico = Icosphere(L)
+
+    colors = torch.empty((ico.get_vertex_count(), 3), dtype=torch.float32)
+    for i, (lon,lat) in enumerate(ico.generate_vertices(cartesian=False, radians=False)):
+        v = (lat + 90) / 180
+        colors[i] = torch.asarray([v, v, v])
+
+    vis = IcosphereVisualizer(L)
+    vis.update_mesh(colors)
+
+    def on_key(key):
+        nonlocal colors
+        nonlocal vis
+        if key == b'g':
+            grad = IcosphereGradient()
+            g = grad(colors[:, 0])[3] # east
+            scale = max(-torch.min(g), torch.max(g))
+            print(g)
+            print(torch.min(g))
+            print(torch.max(g))
+            #g = g / (scale + 0.0000001) / 2 + 1
+            colors = torch.stack((g, g, g), dim=1)
+            vis.update_mesh(colors)
+           
+
+    vis.on_key_release = on_key
+    vis.main_loop()
+
+f()

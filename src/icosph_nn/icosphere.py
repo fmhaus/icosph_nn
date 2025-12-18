@@ -24,7 +24,7 @@ def cart2sph(coords, radians = True):
         lat = torch.rad2deg(lat)
     return torch.stack((lon, lat), dim=-1)
 
-class IcoSphere:
+class Icosphere:
     def __init__(self, level, device='cpu'):
         self.level = level
         self.device = device
