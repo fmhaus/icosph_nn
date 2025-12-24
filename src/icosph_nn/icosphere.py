@@ -1,8 +1,10 @@
 import math
 import torch
+from icosph_nn import utils
 
 def sph2cart(coords, radians = True):
     coords = torch.as_tensor(coords, dtype=torch.float32)
+    assert(coords.shape[-1] == 2)
     lon, lat = coords[..., 0], coords[..., 1]
     if not radians:
         lon = torch.deg2rad(lon)
@@ -16,6 +18,7 @@ def sph2cart(coords, radians = True):
 
 def cart2sph(coords, radians = True):
     coords = torch.as_tensor(coords, dtype=torch.float32)
+    assert(coords.shape[-1] == 3)
     x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
     lon = torch.atan2(z, x)
     lat = torch.asin(y)
@@ -185,9 +188,9 @@ class Icosphere:
         assert(v_sph.shape[1] == 2)
 
         lon = v_sph[:, 0]
-        return torch.stack((-torch.sin(lon), 
+        return torch.stack((torch.sin(lon), 
                             torch.zeros(v_sph.shape[0], device=v_sph.device), 
-                            torch.cos(lon)), 
+                            -torch.cos(lon)), 
                             dim=1)
     
     def get_north_directions(v_sph):
@@ -200,4 +203,17 @@ class Icosphere:
                             torch.cos(lat),
                             -sin_lat * torch.sin(lon)), 
                             dim=1)
+    
+    def get_face_side_dim(self):
+        return utils.get_face_side_dims(self.level)
+
+    def get_pole_view(self, values):
+        return values[-2:]
+    
+    def get_non_polar_view(self, values, reshape_face_view = False):
+        non_polar = values[:-2]
+        if reshape_face_view:
+            HS, S = utils.get_face_side_dims(self.level)
+            non_polar = non_polar.reshape(5, HS, S, ...)
+        return non_polar
     

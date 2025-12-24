@@ -1,6 +1,4 @@
-import torch
-from icosph_nn.icosphere import Icosphere, cart2sph
-from collections import defaultdict
+
 
 def get_icosphere_level(length):
     reduced = length - 2
