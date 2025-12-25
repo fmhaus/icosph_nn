@@ -8,7 +8,7 @@ vis = visuals.IcosphereVisualizer(L, title="GG")
 
 ico = icosphere.Icosphere(L)
 vert = ico.generate_vertices(cartesian=False)
-colors = torch.zeros((ico.get_vertex_count(), 3), dtype=torch.float32)
+colors = torch.ones((ico.get_vertex_count(), 3), dtype=torch.float32) / 2
 
 HS, S = utils.get_face_side_dims(L)
 indices = torch.arange(HS*S).view(HS, S)
@@ -16,24 +16,27 @@ indices_next = indices + (HS * S)
 indices_prev = indices + (HS * S * 4)
 
 indices_main = indices[1:-1, 1:-1]
-neighbours_indices = [
+neighbours_indices = torch.stack([
     indices[:-2, :-2],
     indices[2:, 2:],
     indices[:-2, 1:-1],
     indices[1:-1, 2:],
     indices[1:-1, :-2],
     indices[2:, 1:-1]
-]
+], dim=0)
 
-to_neighbour = vert[neighbours_indices[0]] - vert[indices_main]
-v = torch.where(to_neighbour[..., 1] > 0, 
-                            torch.ones(to_neighbour.shape[:-1]), 
-                            torch.zeros(to_neighbour.shape[:-1]))
+to_neighbour = vert[neighbours_indices] - vert[indices_main[None, :]]
+to_neighbour[..., 0] = (to_neighbour[..., 0] + torch.pi) % (2 * torch.pi) - torch.pi
+print(to_neighbour.shape)
 
-colors[indices_main, :] = torch.stack((v, torch.zeros(v.shape), torch.zeros(v.shape)), dim=-1)
+dir = torch.asarray([0, 1], dtype=torch.float)
+w = torch.sum(to_neighbour * dir[..., :], dim=-1) / (torch.sqrt(torch.sum(to_neighbour ** 2, dim=-1)))
+v, i = torch.topk(w, k=2, dim=0)
 
-R = ico.get_vertex_count() - HS * S
-colors[HS*S:] = torch.stack((torch.zeros(R), torch.ones(R), torch.ones(R)), dim=-1)
+print(i.shape)
+COLORS = torch.asarray([[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1]], dtype=torch.float32)
+
+colors[indices_main, :] = COLORS[i[0]]
 
 vis.update_mesh(colors)
 vis.main_loop()

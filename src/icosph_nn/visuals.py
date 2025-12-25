@@ -46,7 +46,7 @@ class Mesh:
         self.index_vbo.delete()
 
 class IcosphereVisualizer:
-    def __init__(self, level, width=800, height=600, fov=60, title="Icosphere visualizer"):
+    def __init__(self, level, fix_rotation_axis = False, width=800, height=600, fov=60, title="Icosphere visualizer"):
         
         self._level = level
         self._mesh = None
@@ -56,6 +56,7 @@ class IcosphereVisualizer:
         self._fov = fov
         self._dragging_start = None
         self._wireframe = False
+        self.fix_rotation_axis = fix_rotation_axis
 
         glutInit()
         glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH)
@@ -174,12 +175,14 @@ class IcosphereVisualizer:
             if dx == 0 and dy == 0:
                 return
 
-            axis = np.array((dy, -dx, 0), dtype=np.float32)
-            # axis = np.array((0, 1, 0), np.float32)
-            length = np.linalg.norm(axis)
-
-            self.rotation_axis = axis / length
-            self.rotation_speed = length * self._fov / 60
+            if self.fix_rotation_axis:
+                self.rotation_axis = np.array((0, math.copysign(1, -dx), 0), np.float32)
+                self.rotation_speed = math.fabs(dx) * self._fov / 60
+            else:
+                axis = np.array((dy, -dx, 0), dtype=np.float32)
+                length = np.linalg.norm(axis)
+                self.rotation_axis = axis / length
+                self.rotation_speed = length * self._fov / 60
 
     def _resize(self, width, height):
         if width == 0 or height == 0:
